@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Earth Symphony | Aerosol Size</title>
+<style>
+* { box-sizing: border-box; }
+body {
+	margin: 0;
+	min-height: 100vh;
+	background: radial-gradient(circle at top, #172b49, #050b16 75%);
+	color: white;
+	font-family: Arial, sans-serif;
+	text-align: center;
+	padding: 35px 15px;
+}
+h1 { font-size: 38px; letter-spacing: 4px; margin-bottom: 8px; }
+.subtitle { color: #aabbd1; margin-bottom: 30px; }
+.container {
+	max-width: 1000px;
+	margin: auto;
+	background: rgba(255,255,255,0.05);
+	border: 1px solid rgba(255,255,255,0.12);
+	border-radius: 20px;
+	padding: 25px;
+}
+canvas {
+	width: 100%;
+	height: auto;
+	display: block;
+	border-radius: 12px;
+	cursor: crosshair;
+	background: #101c30;
+}
+.controls {
+	margin: 15px 0;
+	display: flex;
+	justify-content: center;
+	flex-wrap: wrap;
+	gap: 10px;
+}
+button {
+	background: #d9534f;
+	color: white;
+	border: none;
+	padding: 13px 25px;
+	border-radius: 9px;
+	font-size: 15px;
+	cursor: pointer;
+	margin: 5px;
+	transition: background 0.2s;
+}
+button:hover { background: #e86f6b; }
+#status { font-size: 19px; margin-top: 22px; color: #ff9b85; }
+#description { color: #b8c7d9; margin-top: 10px; }
+.legend {
+	display: flex;
+	justify-content: center;
+	gap: 25px;
+	flex-wrap: wrap;
+	margin-top: 22px;
+	color: #cbd5e1;
+}
+.dot {
+	display: inline-block;
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	margin-right: 7px;
+}
+.hint { font-size: 13px; color: #899bb2; margin-top: 20px; }
+</style>
+</head>
+<body>
+<h1>EARTH SYMPHONY</h1>
+<p class="subtitle">Discover the sound of atmospheric aerosols</p>
+<div class="container">
+	<p>NASA GLOBAL AEROSOL SIZE MAP</p>
+	<canvas id="map"></canvas>
+	<div class="controls">
+		<button onclick="startMusic()" id="start">▶ START MUSIC</button>
+	</div>
+	<audio id="bgMusic" src="aerosolmuzik.mp3" loop crossorigin="anonymous"></audio>
+	<div id="status">Map loaded, start the music and begin exploring!</div>
+	<div id="description">Colors will change the music filter, volume, and tempo based on aerosol particle size.</div>
+	<div class="legend">
+		<span><i class="dot" style="background:#d9381e"></i>High Fine Particles (Bright &amp; Fast)</span>
+		<span><i class="dot" style="background:#f4e87c"></i>Moderate Ratio (Balanced)</span>
+		<span><i class="dot" style="background:#2e8b57"></i>Low Fine Particles (Deep &amp; Muffled)</span>
+	</div>
+	<p class="hint">Move your mouse over the aerosol map to listen to the planet.</p>
+</div>
+<script>
+const canvas = document.getElementById("map");
+const ctx = canvas.getContext("2d", { willReadFrequently: true });
+const statusText = document.getElementById("status");
+const description = document.getElementById("description");
+const bgMusic = document.getElementById("bgMusic");
+
+const image = new Image();
+let audioCtx = null;
+let filterNode = null;
+let gainNode = null;
+let started = false;
+
+image.src = "aerosolharita.jpg";
+image.onload = function () {
+	canvas.width = image.naturalWidth;
+	canvas.height = image.naturalHeight;
+	ctx.drawImage(image, 0, 0);
+	statusText.textContent = "Aerosol map ready! Click 'Start Music' to begin.";
+};
+image.onerror = function () {
+	statusText.textContent = "Could not load aerosolharita.jpg. Check that the image is in this folder.";
+};
+
+async function startMusic() {
+	if (!started) {
+		const AudioContext = window.AudioContext || window.webkitAudioContext;
+		if (!AudioContext) {
+			statusText.textContent = "Web Audio is not supported by this browser.";
+			return;
+		}
+		audioCtx = new AudioContext();
+		const track = audioCtx.createMediaElementSource(bgMusic);
+		gainNode = audioCtx.createGain();
+		gainNode.gain.value = 0.2;
+		filterNode = audioCtx.createBiquadFilter();
+		filterNode.type = "lowpass";
+		filterNode.frequency.value = 400;
+		track.connect(filterNode);
+		filterNode.connect(gainNode);
+		gainNode.connect(audioCtx.destination);
+		started = true;
+	}
+
+	try {
+		if (audioCtx.state === "suspended") await audioCtx.resume();
+		await bgMusic.play();
+		document.getElementById("start").textContent = "✓ MUSIC ACTIVE";
+		statusText.textContent = "Music is playing! Explore the aerosol map.";
+	} catch (error) {
+		console.error("Could not start music:", error);
+		statusText.textContent = "Could not play aerosolmuzik.mp3. Check that the file is in this folder.";
+	}
+}
+
+function analyzeColor(x, y) {
+	if (!image.complete || !image.naturalWidth) return;
+	const pixel = ctx.getImageData(x, y, 1, 1).data;
+	const [r, g, b] = pixel;
+	const isGray = Math.abs(r - g) < 18 && Math.abs(g - b) < 18 && Math.abs(r - b) < 18;
+	if (isGray && r < 235) {
+		updateMusic(0.05);
+		statusText.textContent = "🌐 NO DATA AREA";
+		description.textContent = "Land/ocean mask area: Ambient background sound.";
+		return;
+	}
+
+	let intensity = (r - g + 100) / 220;
+	intensity = Math.max(0, Math.min(1, intensity));
+	updateMusic(intensity);
+	if (intensity > 0.55) {
+		statusText.textContent = "🔴 HIGH SMALL PARTICLE RATIO";
+		description.textContent = "High aerosol concentration: High volume and bright tones.";
+	} else if (intensity > 0.28) {
+		statusText.textContent = "🟡 MODERATE PARTICLE RATIO";
+		description.textContent = "Balanced aerosol concentration: Normal tempo and sound.";
+	} else {
+		statusText.textContent = "🟢 LOW SMALL PARTICLE RATIO";
+		description.textContent = "Coarser particles / low concentration: Deep and calm tones.";
+	}
+}
+
+function updateMusic(intensity) {
+	if (!started) return;
+	const now = audioCtx.currentTime;
+	gainNode.gain.setTargetAtTime(0.25 + intensity * 0.75, now, 0.1);
+	filterNode.frequency.setTargetAtTime(350 + Math.pow(intensity, 1.5) * 17650, now, 0.1);
+	bgMusic.playbackRate = 0.90 + intensity * 0.25;
+}
+
+canvas.addEventListener("pointermove", function (event) {
+	if (!image.complete || !image.naturalWidth) return;
+	const rect = canvas.getBoundingClientRect();
+	const x = Math.max(0, Math.min(canvas.width - 1, Math.floor((event.clientX - rect.left) * canvas.width / rect.width)));
+	const y = Math.max(0, Math.min(canvas.height - 1, Math.floor((event.clientY - rect.top) * canvas.height / rect.height)));
+	analyzeColor(x, y);
+});
+
+canvas.addEventListener("pointerleave", function () {
+	if (!started) return;
+	const now = audioCtx.currentTime;
+	gainNode.gain.setTargetAtTime(0.15, now, 0.2);
+	filterNode.frequency.setTargetAtTime(300, now, 0.2);
+	bgMusic.playbackRate = 1.0;
+	statusText.textContent = "Continue exploring the aerosol map!";
+});
+</script>
+</body>
+</html>
